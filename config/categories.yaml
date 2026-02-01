@@ -1,0 +1,25 @@
+categories:
+  - name: "Sports"
+    priority: 1
+    keywords: ["NBA", "NFL", "soccer", "playoffs", "championship"]
+    min_stories: 3
+  - name: "Technology"
+    priority: 2
+    keywords: ["smartphone", "gadget", "software", "innovation"]
+    min_stories: 2
+  - name: "Stock Market"
+    priority: 3
+    keywords: ["stocks", "market", "S&P 500", "crypto"]
+    min_stories: 2
+  - name: "AI News"
+    priority: 4
+    keywords: ["AI", "machine learning", "GPT", "LLM"]
+    min_stories: 2
+  - name: "World News"
+    priority: 5
+    keywords: ["international", "politics", "climate"]
+    min_stories: 2
+  - name: "Tech News"
+    priority: 6
+    keywords: ["startup", "venture capital", "IPO"]
+    min_stories: 1

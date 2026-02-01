@@ -1,0 +1,66 @@
+---
+const { title } = Astro.props;
+---
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{title || "Gen Z News Digest"}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100 min-h-screen font-['Inter',sans-serif]">
+  <header class="sticky top-0 z-50 bg-slate-900/80 backdrop-blur-lg border-b border-slate-700/50 shadow-lg">
+    <div class="container mx-auto max-w-7xl px-6 py-4">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-3xl font-bold bg-gradient-to-r from-indigo-400 via-pink-400 to-indigo-400 bg-clip-text text-transparent">
+            Gen Z News Digest
+          </h1>
+          <p class="text-slate-400 text-sm mt-1">Curated news for the next generation</p>
+        </div>
+        <nav class="hidden md:flex gap-6">
+          <a href="/" class="text-slate-300 hover:text-indigo-400 transition-colors font-medium">Home</a>
+          <a href="#podcast" class="text-slate-300 hover:text-indigo-400 transition-colors font-medium">Podcast</a>
+          <a href="#about" class="text-slate-300 hover:text-indigo-400 transition-colors font-medium">About</a>
+        </nav>
+      </div>
+    </div>
+  </header>
+  <main class="container mx-auto px-6 py-8 max-w-7xl">
+    <slot />
+  </main>
+  <footer class="mt-20 border-t border-slate-700/50 bg-slate-900/50 backdrop-blur-lg">
+    <div class="container mx-auto max-w-7xl px-6 py-8">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div>
+          <h3 class="font-bold text-white mb-4">Gen Z News Digest</h3>
+          <p class="text-slate-400 text-sm">
+            Your weekly source for curated news, designed specifically for Gen Z audiences.
+          </p>
+        </div>
+        <div>
+          <h3 class="font-bold text-white mb-4">Quick Links</h3>
+          <ul class="space-y-2 text-sm text-slate-400">
+            <li><a href="/" class="hover:text-indigo-400 transition-colors">Latest Stories</a></li>
+            <li><a href="#podcast" class="hover:text-indigo-400 transition-colors">Weekly Podcast</a></li>
+            <li><a href="#archive" class="hover:text-indigo-400 transition-colors">Archive</a></li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="font-bold text-white mb-4">Powered By</h3>
+          <p class="text-slate-400 text-sm">
+            AI-powered curation using Claude AI<br>
+            Built with Astro & Tailwind CSS
+          </p>
+        </div>
+      </div>
+      <div class="mt-8 pt-8 border-t border-slate-700/50 text-center text-slate-500 text-sm">
+        <p>&copy; 2025 Gen Z News Digest. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

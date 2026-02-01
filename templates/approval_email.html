@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .story {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .category {
+            color: #666;
+            font-size: 0.9em;
+            text-transform: uppercase;
+        }
+        h1 {
+            color: #6366F1;
+        }
+    </style>
+</head>
+<body>
+    <h1>Weekly News Digest - Approval Needed</h1>
+    <p>Please review the following stories and approve or reject.</p>
+    {{content}}
+    <hr>
+    <p><strong>To approve:</strong> Create file: data/approved/week-XXXX/APPROVED.txt</p>
+    <p><strong>To reject:</strong> Create file: data/approved/week-XXXX/REJECTED.txt</p>
+</body>
+</html>

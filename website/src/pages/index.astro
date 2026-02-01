@@ -1,0 +1,162 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+// Load stories data - will be populated from API or static file
+let stories = [];
+let weekId = null;
+
+// Try to load from public data file
+try {
+  const response = await fetch('/data/latest-stories.json');
+  if (response.ok) {
+    const data = await response.json();
+    stories = data.stories || [];
+    weekId = data.weekId || null;
+  }
+} catch (e) {
+  // Fallback to demo data
+  stories = [
+    {
+      article: {
+        title: "Claude 4 Outperforms GPT-5 in Creative Writing Tasks",
+        summary: "Anthropic's latest model shows superior performance in creative tasks, making it a favorite among content creators and students. The AI can now generate more engaging and authentic content that resonates with Gen Z audiences.",
+        category: "AI News",
+        url: "#",
+        source: "VentureBeat AI",
+        relevance_score: 0.88
+      },
+      rank: 1,
+      importance_score: 0.88
+    },
+    {
+      article: {
+        title: "New iPhone 16 Pro Features Revolutionary AI Chip",
+        summary: "Apple unveiled the iPhone 16 Pro with a groundbreaking AI processor that enables real-time language translation and advanced photo editing. Gen Z users are excited about the new creative possibilities.",
+        category: "Technology",
+        url: "#",
+        source: "TechCrunch",
+        relevance_score: 0.90
+      },
+      rank: 2,
+      importance_score: 0.90
+    },
+    {
+      article: {
+        title: "NBA Finals: Clippers Dominate Game 7 with Record Performance",
+        summary: "The LA Clippers secured their first championship with an incredible Game 7 victory. Kawhi Leonard led the team with 45 points, breaking multiple records. This win marks a historic moment for the franchise.",
+        category: "Sports",
+        url: "#",
+        source: "ESPN",
+        relevance_score: 0.85
+      },
+      rank: 3,
+      importance_score: 0.85
+    }
+  ];
+}
+---
+
+<BaseLayout title="Gen Z News Digest - Latest Stories">
+  <div class="hero-section mb-12">
+    <h1 class="text-5xl font-bold mb-4 bg-gradient-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent">
+      Gen Z News Digest
+    </h1>
+    <p class="text-xl text-slate-300 mb-6">
+      Your weekly curated news, designed for Gen Z
+    </p>
+    {weekId && (
+      <p class="text-slate-400">Week {weekId}</p>
+    )}
+  </div>
+
+  {stories.length > 0 ? (
+    <div class="stories-container space-y-6">
+      {stories.map((story) => {
+        const art = story.article;
+        return (
+          <article class="story-card bg-slate-800 rounded-lg p-6 hover:bg-slate-750 transition-colors border border-slate-700 shadow-lg hover:shadow-xl">
+            <div class="flex justify-between items-start mb-4">
+              <span class="category-badge bg-indigo-500 text-white px-3 py-1 rounded-full text-sm font-semibold">
+                {art.category}
+              </span>
+              <div class="flex items-center gap-3">
+                <span class="rank-badge text-slate-400 text-sm font-bold">#{story.rank}</span>
+                <span class="score-badge bg-green-500 text-white px-2 py-1 rounded text-xs font-bold">
+                  ⭐ {story.importance_score?.toFixed(2) || '0.00'}
+                </span>
+              </div>
+            </div>
+            
+            <h2 class="text-2xl font-bold mb-3 text-white hover:text-indigo-400 transition-colors">
+              <a href={art.url} target="_blank" rel="noopener">
+                {art.title}
+              </a>
+            </h2>
+            
+            <p class="text-slate-300 mb-4 leading-relaxed">
+              {art.summary}
+            </p>
+            
+            <div class="story-footer flex justify-between items-center text-sm text-slate-400">
+              <span>Source: <span class="text-indigo-400 font-semibold">{art.source}</span></span>
+              <a 
+                href={art.url} 
+                target="_blank" 
+                rel="noopener"
+                class="read-more text-indigo-400 hover:text-indigo-300 font-semibold flex items-center gap-1 transition-colors"
+              >
+                Read Full Article →
+              </a>
+            </div>
+          </article>
+        );
+      })}
+    </div>
+  ) : (
+    <div class="empty-state bg-slate-800 rounded-lg p-12 text-center border border-slate-700">
+      <div class="text-6xl mb-4">📰</div>
+      <h2 class="text-2xl font-bold mb-4 text-white">No Stories Yet</h2>
+      <p class="text-slate-400 mb-6">
+        Run the weekly consolidation to generate stories, or check back later!
+      </p>
+      <div class="bg-slate-700 rounded p-4 text-left max-w-md mx-auto">
+        <code class="text-green-400 text-sm">
+          python scripts/run_weekly_consolidation.py
+        </code>
+      </div>
+    </div>
+  )}
+
+  <div id="podcast" class="podcast-section mt-12 bg-slate-800 rounded-lg p-8 border border-slate-700">
+    <h2 class="text-2xl font-bold mb-4 text-white">🎙️ Weekly Podcast</h2>
+    <div class="audio-player bg-slate-900 rounded-lg p-4">
+      {weekId ? (
+        <audio controls class="w-full">
+          <source src={`/weeks/${weekId}/podcast.mp3`} type="audio/mpeg" />
+          Your browser does not support the audio element.
+        </audio>
+      ) : (
+        <p class="text-slate-400">Podcast will be available after approval and publishing.</p>
+      )}
+    </div>
+  </div>
+
+  <div class="stats-section mt-12 grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="stat-card bg-slate-800 rounded-lg p-6 text-center border border-slate-700">
+      <div class="text-3xl font-bold text-indigo-400 mb-2">{stories.length}</div>
+      <div class="text-slate-400">Stories This Week</div>
+    </div>
+    <div class="stat-card bg-slate-800 rounded-lg p-6 text-center border border-slate-700">
+      <div class="text-3xl font-bold text-pink-400 mb-2">
+        {new Set(stories.map(s => s.article.category)).size}
+      </div>
+      <div class="text-slate-400">Categories</div>
+    </div>
+    <div class="stat-card bg-slate-800 rounded-lg p-6 text-center border border-slate-700">
+      <div class="text-3xl font-bold text-green-400 mb-2">
+        {stories.length > 0 ? (stories.reduce((sum, s) => sum + (s.importance_score || 0), 0) / stories.length).toFixed(2) : '0.00'}
+      </div>
+      <div class="text-slate-400">Avg Relevance</div>
+    </div>
+  </div>
+</BaseLayout>

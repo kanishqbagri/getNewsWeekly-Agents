@@ -1,0 +1,40 @@
+# Core
+anthropic>=0.18.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+pyyaml>=6.0
+
+# Web Scraping
+beautifulsoup4>=4.12.0
+newspaper3k>=0.2.8
+feedparser>=6.0.10
+requests>=2.31.0
+lxml>=4.9.0
+
+# Audio
+elevenlabs>=0.2.0
+pydub>=0.25.1
+
+# Video
+ffmpeg-python>=0.2.0
+
+# Social Media
+tweepy>=4.14.0
+
+# Email
+secure-smtplib>=0.1.1
+
+# Image Processing
+Pillow>=10.0.0
+
+# Scheduling
+APScheduler>=3.10.0
+
+# Utils
+python-dateutil>=2.8.0
+pytz>=2023.3
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.12.0

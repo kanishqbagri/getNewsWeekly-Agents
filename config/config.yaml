@@ -1,0 +1,40 @@
+system:
+  timezone: "America/Los_Angeles"
+  data_retention_weeks: 52
+
+agents:
+  scraper:
+    schedule_cron: "0 9 * * *"
+    timeout_seconds: 300
+    max_retries: 3
+  
+  consolidation:
+    schedule_cron: "0 20 * * 5"
+    min_stories_per_category: 2
+    max_total_stories: 15
+    approval_timeout_hours: 24
+  
+  formatter:
+    twitter_max_chars: 250
+    thumbnail_size: [1200, 630]
+  
+  audio:
+    max_duration_seconds: 300
+    voice_stability: 0.6
+    voice_clarity: 0.8
+    voice_style: 0.7
+  
+  twitter:
+    post_delay_seconds: 10
+    optimal_post_time: "10:00"
+
+llm:
+  model: "claude-sonnet-4-20250514"
+  max_tokens: 4000
+  temperature: 0.7
+
+storage:
+  base_path: "data"
+
+email:
+  approval_recipient: "approval@example.com"
