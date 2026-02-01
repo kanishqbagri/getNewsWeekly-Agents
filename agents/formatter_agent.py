@@ -47,7 +47,7 @@ class FormatterAgent(BaseAgent):
             await self.emit_event(EventType.ERROR_OCCURRED, {"error": str(e), "agent": "formatter"})
     
     async def _format_newsletter(self, stories):
-        """Generate newsletter HTML using Claude"""
+        """Generate newsletter HTML using Claude with Ralph's Loop quality refinement"""
         # Convert to format Claude expects
         story_dicts = []
         for story in stories:
@@ -56,10 +56,24 @@ class FormatterAgent(BaseAgent):
                 story_dicts.append({
                     'title': art.get('title', ''),
                     'category': art.get('category', ''),
-                    'summary': art.get('summary', '')
+                    'summary': art.get('summary', ''),
+                    'url': art.get('url', '')
                 })
-        
-        content = await self.claude.format_newsletter(story_dicts)
+
+        # Use Ralph's Loop for iterative quality improvement
+        self.logger.info("Starting Ralph's Loop for newsletter content refinement")
+
+        refined_content = await self.run_ralfs_loop(
+            task=story_dicts,
+            observe_func=self._observe_newsletter_state,
+            reflect_func=self._reflect_on_newsletter_quality,
+            act_func=self._improve_newsletter_content,
+            max_iterations=3,
+            confidence_threshold=0.85
+        )
+
+        content = refined_content.get('content', '')
+
         # Wrap in HTML template
         return f"""<html>
 <head>
@@ -74,6 +88,151 @@ class FormatterAgent(BaseAgent):
     {content}
 </body>
 </html>"""
+
+    async def _observe_newsletter_state(self, task_or_result):
+        """Observe: Generate or examine newsletter content"""
+        if isinstance(task_or_result, list):
+            # Initial generation
+            self.logger.debug("Generating initial newsletter content")
+            content = await self.claude.format_newsletter(task_or_result)
+            return {
+                'content': content,
+                'stories': task_or_result,
+                'iteration': 0
+            }
+        else:
+            # Return the improved content from previous iteration
+            return task_or_result
+
+    async def _reflect_on_newsletter_quality(self, observation):
+        """Reflect: Assess newsletter quality and provide improvement suggestions"""
+        content = observation.get('content', '')
+        stories = observation.get('stories', [])
+        iteration = observation.get('iteration', 0)
+
+        self.logger.debug(f"Reflecting on newsletter quality (iteration {iteration})")
+
+        # Quality assessment prompt
+        assessment_prompt = f"""Assess the quality of this Gen Z newsletter content and provide actionable feedback.
+
+CONTENT TO REVIEW:
+{content}
+
+EVALUATION CRITERIA:
+1. **Engagement** (0-10): Is it exciting and attention-grabbing?
+2. **Clarity** (0-10): Are explanations clear and easy to understand?
+3. **Tone** (0-10): Does it match "excited teenager with composure"?
+4. **Relevance** (0-10): Does it explain why stories matter to Gen Z?
+5. **Writing Quality** (0-10): Short sentences, active voice, good flow?
+
+Provide your assessment in this exact JSON format:
+{{
+    "engagement_score": <0-10>,
+    "clarity_score": <0-10>,
+    "tone_score": <0-10>,
+    "relevance_score": <0-10>,
+    "writing_score": <0-10>,
+    "overall_confidence": <0.0-1.0>,
+    "strengths": ["strength 1", "strength 2"],
+    "weaknesses": ["weakness 1", "weakness 2"],
+    "improvements": ["specific improvement 1", "specific improvement 2"]
+}}
+
+Return ONLY valid JSON, nothing else."""
+
+        try:
+            response = await self.claude.generate(assessment_prompt, max_tokens=1000, temperature=0.3)
+            # Parse JSON response
+            import json
+            assessment = json.loads(response.strip())
+
+            # Calculate average score and confidence
+            avg_score = (
+                assessment.get('engagement_score', 0) +
+                assessment.get('clarity_score', 0) +
+                assessment.get('tone_score', 0) +
+                assessment.get('relevance_score', 0) +
+                assessment.get('writing_score', 0)
+            ) / 50.0  # Normalize to 0-1
+
+            assessment['confidence'] = assessment.get('overall_confidence', avg_score)
+            assessment['average_score'] = avg_score
+
+            self.logger.info(
+                f"Quality scores - Engagement: {assessment.get('engagement_score')}/10, "
+                f"Clarity: {assessment.get('clarity_score')}/10, "
+                f"Tone: {assessment.get('tone_score')}/10, "
+                f"Overall confidence: {assessment['confidence']:.2f}"
+            )
+
+            return {
+                **assessment,
+                'content': content,
+                'stories': stories,
+                'iteration': iteration
+            }
+        except Exception as e:
+            self.logger.warning(f"Failed to parse quality assessment: {e}, using default confidence")
+            # Return high confidence to stop iteration on error
+            return {
+                'confidence': 0.9,
+                'content': content,
+                'stories': stories,
+                'iteration': iteration,
+                'improvements': []
+            }
+
+    async def _improve_newsletter_content(self, reflection):
+        """Act: Generate improved newsletter based on reflection feedback"""
+        content = reflection.get('content', '')
+        stories = reflection.get('stories', [])
+        improvements = reflection.get('improvements', [])
+        weaknesses = reflection.get('weaknesses', [])
+        iteration = reflection.get('iteration', 0)
+
+        if not improvements:
+            # No improvements needed, return as is
+            return {
+                'content': content,
+                'stories': stories,
+                'iteration': iteration + 1
+            }
+
+        self.logger.debug(f"Generating improved version (iteration {iteration + 1})")
+
+        # Improvement prompt
+        improvement_prompt = f"""Improve this Gen Z newsletter content based on specific feedback.
+
+CURRENT CONTENT:
+{content}
+
+IDENTIFIED WEAKNESSES:
+{chr(10).join(f"- {w}" for w in weaknesses)}
+
+SPECIFIC IMPROVEMENTS TO MAKE:
+{chr(10).join(f"- {imp}" for imp in improvements)}
+
+REQUIREMENTS:
+- Keep the same stories but improve the writing
+- Make it MORE engaging and exciting for Gen Z
+- Ensure tone is "excited teenager with composure"
+- Use short sentences, active voice, occasional exclamation points
+- Explain WHY each story matters to young people
+- Maintain HTML-friendly formatting (use <div class="story"> for each story)
+
+Generate the IMPROVED newsletter content following the feedback above."""
+
+        improved_content = await self.claude.generate(
+            improvement_prompt,
+            max_tokens=3000,
+            temperature=0.7
+        )
+
+        return {
+            'content': improved_content,
+            'stories': stories,
+            'iteration': iteration + 1
+        }
     
     async def _format_twitter(self, stories):
         """Generate tweet thread"""

@@ -69,8 +69,8 @@ class ConsolidationAgent(BaseAgent):
         return self.storage.load_weekly_raw(start, end)
     
     async def _rank_with_ralfs_loop(self, weekly_data: Dict) -> List[RankedArticle]:
-        """Use Ralf's Loop to select and rank best stories"""
-        
+        """Use enhanced Ralf's Loop for intelligent story selection and ranking"""
+
         # Convert to Article objects
         all_articles = []
         for category, articles in weekly_data.items():
@@ -88,77 +88,293 @@ class ConsolidationAgent(BaseAgent):
                 except Exception as e:
                     self.logger.warning(f"Error converting article: {e}")
                     continue
-        
+
+        self.logger.info(f"Starting ranking for {len(all_articles)} articles")
+
         async def observe(articles):
-            # Group by category, count diversity
+            """Observe: Remove duplicates and group by category"""
+            # Detect and remove duplicates
+            unique_articles = await self._remove_duplicates(articles)
+            removed = len(articles) - len(unique_articles)
+            if removed > 0:
+                self.logger.info(f"Removed {removed} duplicate articles")
+
+            # Group by category
             by_category = {}
-            for a in articles:
+            for a in unique_articles:
                 by_category.setdefault(a.category, []).append(a)
-            return {"articles": articles, "by_category": by_category}
-        
-        async def reflect(observation):
-            # Use Claude to assess selection quality
-            articles = observation["articles"]
-            
-            # Check if we have good category balance
-            category_counts = {cat: len(arts) for cat, arts in observation["by_category"].items()}
-            
-            # Get minimum required per category
-            min_required = {c['name']: c['min_stories'] for c in self.categories}
-            
-            # Check coverage
-            missing = [cat for cat, min_count in min_required.items() 
-                      if category_counts.get(cat, 0) < min_count]
-            
-            confidence = 0.9 if not missing else 0.5
-            
+
             return {
-                "confidence": confidence,
-                "missing_categories": missing,
-                "feedback": "Good balance" if not missing else f"Need more: {missing}"
+                "articles": unique_articles,
+                "by_category": by_category,
+                "duplicates_removed": removed
             }
-        
+
+        async def reflect(observation):
+            """Reflect: Assess diversity, balance, and quality of selection"""
+            articles_list = observation["articles"]
+            by_category = observation["by_category"]
+
+            # Check category balance
+            category_counts = {cat: len(arts) for cat, arts in by_category.items()}
+
+            # Get requirements
+            min_required = {c['name']: c['min_stories'] for c in self.categories}
+
+            # Check coverage
+            missing = [cat for cat, min_count in min_required.items()
+                      if category_counts.get(cat, 0) < min_count]
+
+            # Assess diversity within categories
+            diversity_scores = {}
+            for cat, arts in by_category.items():
+                # Check if articles cover different topics (title similarity)
+                if len(arts) > 1:
+                    unique_topics = self._count_unique_topics(arts)
+                    diversity_scores[cat] = unique_topics / len(arts)
+                else:
+                    diversity_scores[cat] = 1.0
+
+            avg_diversity = sum(diversity_scores.values()) / len(diversity_scores) if diversity_scores else 0
+
+            # Calculate quality metrics
+            avg_relevance = sum(a.relevance_score or 0.5 for a in articles_list) / len(articles_list) if articles_list else 0
+            high_quality = sum(1 for a in articles_list if (a.relevance_score or 0) >= 0.7)
+
+            # Assess recency (newer articles preferred)
+            recent_count = self._count_recent_articles(articles_list, days=3)
+            recency_ratio = recent_count / len(articles_list) if articles_list else 0
+
+            # Overall confidence
+            balance_score = 0.3 if not missing else 0.0
+            diversity_score = avg_diversity * 0.25
+            quality_score = (high_quality / len(articles_list)) * 0.25 if articles_list else 0
+            recency_score = recency_ratio * 0.2
+
+            confidence = balance_score + diversity_score + quality_score + recency_score
+
+            self.logger.info(
+                f"Quality assessment - Diversity: {avg_diversity:.2f}, "
+                f"Avg relevance: {avg_relevance:.2f}, Recent: {recent_count}/{len(articles_list)}, "
+                f"Confidence: {confidence:.2f}"
+            )
+
+            if missing:
+                self.logger.warning(f"Missing categories: {missing}")
+
+            return {
+                "confidence": min(confidence, 0.95),  # Cap at 0.95 to allow iteration
+                "missing_categories": missing,
+                "diversity_scores": diversity_scores,
+                "avg_diversity": avg_diversity,
+                "avg_relevance": avg_relevance,
+                "articles": articles_list,
+                "by_category": by_category
+            }
+
         async def act(reflection):
-            # Rank stories by category priority
+            """Act: Rank stories using multi-factor algorithm"""
+            articles_list = reflection.get("articles", all_articles)
+            by_category = reflection.get("by_category", {})
+
             ranked = []
             rank = 1
-            
+
             # Sort categories by priority
             sorted_categories = sorted(self.categories, key=lambda x: x['priority'])
-            
+
             for cat_config in sorted_categories:
                 cat_name = cat_config['name']
-                cat_articles = [a for a in all_articles if a.category == cat_name]
-                
-                # Sort by relevance score
-                cat_articles.sort(key=lambda x: x.relevance_score or 0, reverse=True)
-                
+                cat_articles = by_category.get(cat_name, [])
+
+                if not cat_articles:
+                    continue
+
+                # Enhanced ranking algorithm
+                for article in cat_articles:
+                    article.composite_score = self._calculate_composite_score(article)
+
+                # Sort by composite score
+                cat_articles.sort(key=lambda x: x.composite_score, reverse=True)
+
                 # Take top N for this category
-                top_n = min(cat_config.get('min_stories', 2), len(cat_articles))
-                
+                target_stories = cat_config.get('min_stories', 2)
+                top_n = min(target_stories, len(cat_articles))
+
                 for i, article in enumerate(cat_articles[:top_n]):
+                    reason = self._generate_selection_reason(article, i + 1, cat_name)
                     ranked.append(RankedArticle(
                         article=article,
                         rank=rank,
                         category_rank=i + 1,
-                        importance_score=article.relevance_score or 0.7,
-                        selection_reason=f"Top story in {cat_name}"
+                        importance_score=article.composite_score,
+                        selection_reason=reason
                     ))
                     rank += 1
-            
+
+            # Final ranking across categories by composite score
+            ranked.sort(key=lambda x: x.importance_score, reverse=True)
+
+            # Update global ranks
+            for i, r in enumerate(ranked):
+                r.rank = i + 1
+
             # Limit total
             max_stories = self.config.get('agents', {}).get('consolidation', {}).get('max_total_stories', 15)
-            return ranked[:max_stories]
-        
+            final_ranked = ranked[:max_stories]
+
+            self.logger.info(f"Final selection: {len(final_ranked)} stories from {len(ranked)} candidates")
+
+            return final_ranked
+
         result = await self.run_ralfs_loop(
             all_articles,
             observe,
             reflect,
             act,
-            max_iterations=2
+            max_iterations=3,  # Increased for better refinement
+            confidence_threshold=0.85
         )
-        
+
         return result if isinstance(result, list) else []
+
+    async def _remove_duplicates(self, articles: List[Article]) -> List[Article]:
+        """Remove duplicate articles using URL and title similarity"""
+        seen_urls = set()
+        unique = []
+
+        for article in articles:
+            # Check URL duplicates
+            if article.url in seen_urls:
+                continue
+
+            # Check title similarity with existing articles
+            is_duplicate = False
+            for existing in unique:
+                similarity = self._title_similarity(article.title, existing.title)
+                if similarity > 0.85:  # 85% similar = duplicate
+                    # Keep the one with higher relevance score
+                    if (article.relevance_score or 0) > (existing.relevance_score or 0):
+                        unique.remove(existing)
+                        unique.append(article)
+                    is_duplicate = True
+                    break
+
+            if not is_duplicate:
+                seen_urls.add(article.url)
+                unique.append(article)
+
+        return unique
+
+    def _title_similarity(self, title1: str, title2: str) -> float:
+        """Calculate title similarity using simple word overlap"""
+        words1 = set(title1.lower().split())
+        words2 = set(title2.lower().split())
+
+        if not words1 or not words2:
+            return 0.0
+
+        intersection = words1.intersection(words2)
+        union = words1.union(words2)
+
+        return len(intersection) / len(union) if union else 0.0
+
+    def _count_unique_topics(self, articles: List[Article]) -> int:
+        """Count unique topics in a category based on title similarity"""
+        if not articles:
+            return 0
+
+        clusters = []
+        for article in articles:
+            # Check if similar to existing cluster
+            matched = False
+            for cluster in clusters:
+                if self._title_similarity(article.title, cluster[0].title) > 0.7:
+                    cluster.append(article)
+                    matched = True
+                    break
+            if not matched:
+                clusters.append([article])
+
+        return len(clusters)
+
+    def _count_recent_articles(self, articles: List[Article], days: int = 3) -> int:
+        """Count articles published within last N days"""
+        from datetime import datetime, timedelta
+        cutoff = datetime.now() - timedelta(days=days)
+        count = 0
+
+        for article in articles:
+            if isinstance(article.publish_date, datetime):
+                if article.publish_date >= cutoff:
+                    count += 1
+
+        return count
+
+    def _calculate_composite_score(self, article: Article) -> float:
+        """Calculate composite score from multiple factors"""
+        from datetime import datetime, timedelta
+
+        # Base relevance score (50% weight)
+        relevance = (article.relevance_score or 0.5) * 0.5
+
+        # Recency bonus (30% weight) - newer = better
+        recency_score = 0.0
+        if isinstance(article.publish_date, datetime):
+            age_days = (datetime.now() - article.publish_date).days
+            if age_days <= 1:
+                recency_score = 0.3  # Published today or yesterday
+            elif age_days <= 3:
+                recency_score = 0.2  # Last 3 days
+            elif age_days <= 7:
+                recency_score = 0.1  # Last week
+            else:
+                recency_score = 0.0  # Older
+
+        # Source credibility (10% weight) - major sources get bonus
+        credible_sources = ['Reuters', 'AP News', 'BBC', 'ESPN', 'TechCrunch', 'The Verge', 'Bloomberg']
+        credibility = 0.1 if article.source in credible_sources else 0.05
+
+        # Content quality (10% weight) - longer summaries = more content
+        quality = 0.1 if len(article.summary) > 300 else 0.05
+
+        composite = relevance + recency_score + credibility + quality
+
+        return min(composite, 1.0)  # Cap at 1.0
+
+    def _generate_selection_reason(self, article: Article, category_rank: int, category: str) -> str:
+        """Generate human-readable selection reason"""
+        from datetime import datetime, timedelta
+
+        reasons = []
+
+        # Rank in category
+        if category_rank == 1:
+            reasons.append(f"Top story in {category}")
+        else:
+            reasons.append(f"#{category_rank} in {category}")
+
+        # Relevance
+        score = article.relevance_score or 0.5
+        if score >= 0.8:
+            reasons.append("highly relevant")
+        elif score >= 0.7:
+            reasons.append("relevant")
+
+        # Recency
+        if isinstance(article.publish_date, datetime):
+            age = (datetime.now() - article.publish_date).days
+            if age == 0:
+                reasons.append("breaking news")
+            elif age <= 2:
+                reasons.append("recent")
+
+        # Source
+        credible = ['Reuters', 'AP News', 'BBC', 'ESPN', 'TechCrunch', 'Bloomberg']
+        if article.source in credible:
+            reasons.append(f"from {article.source}")
+
+        return ", ".join(reasons)
     
     async def _generate_report(self, ranked_stories: List[RankedArticle]) -> str:
         """Generate comprehensive HTML approval email"""
