@@ -48,6 +48,7 @@ class ScraperAgent(BaseAgent):
 
                 # Apply Ralf's Loop for quality filtering
                 filtered = await self._apply_quality_filter(articles)
+                self.logger.debug(f"Quality filter returned type: {type(filtered)}")
 
                 # Ensure filtered is a list
                 if not isinstance(filtered, list):
@@ -57,23 +58,31 @@ class ScraperAgent(BaseAgent):
                     else:
                         filtered = []
 
+                self.logger.debug(f"After type check, filtered has {len(filtered)} articles")
+
                 # Convert Article objects to dicts for storage
                 articles_dicts = []
-                for article in filtered:
-                    if isinstance(article, Article):
-                        # Convert dataclass to dict
-                        article_dict = {
-                            'title': article.title,
-                            'summary': article.summary,
-                            'url': article.url,
-                            'publish_date': article.publish_date.isoformat() if hasattr(article.publish_date, 'isoformat') else str(article.publish_date),
-                            'source': article.source,
-                            'category': article.category,
-                            'image_url': article.image_url,
-                            'raw_content': article.raw_content,
-                            'relevance_score': article.relevance_score
-                        }
-                        articles_dicts.append(article_dict)
+                for i, article in enumerate(filtered):
+                    try:
+                        if isinstance(article, Article):
+                            # Convert dataclass to dict
+                            article_dict = {
+                                'title': article.title,
+                                'summary': article.summary,
+                                'url': article.url,
+                                'publish_date': article.publish_date.isoformat() if hasattr(article.publish_date, 'isoformat') else str(article.publish_date),
+                                'source': article.source,
+                                'category': article.category,
+                                'image_url': article.image_url,
+                                'raw_content': article.raw_content,
+                                'relevance_score': article.relevance_score
+                            }
+                            articles_dicts.append(article_dict)
+                    except Exception as article_error:
+                        self.logger.error(f"Error converting article {i}: {article_error}")
+                        continue
+
+                self.logger.debug(f"Converted {len(articles_dicts)} articles to dicts")
 
                 # Save to storage
                 self.storage.save_raw(
@@ -81,11 +90,15 @@ class ScraperAgent(BaseAgent):
                     category.replace(" ", "_")
                 )
 
+                self.logger.debug("Saved to storage successfully")
+
                 all_articles.extend(filtered)
                 self.logger.info(f"Scraped {len(filtered)} articles from {category}")
 
             except Exception as e:
+                import traceback
                 self.logger.error(f"Error scraping {category}: {e}")
+                self.logger.error(f"Traceback: {traceback.format_exc()}")
         
         # Emit event
         await self.emit_event(EventType.NEWS_SCRAPED, {
@@ -324,6 +337,13 @@ class ScraperAgent(BaseAgent):
 
         async def observe(arts):
             """Observe: Validate data quality and prepare for scoring"""
+            # Handle both list input (first iteration) and dict input (subsequent iterations)
+            if isinstance(arts, dict):
+                if 'articles' in arts:
+                    arts = arts['articles']
+                else:
+                    arts = []
+
             validated = []
             quality_issues = []
 
