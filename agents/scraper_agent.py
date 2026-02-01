@@ -45,10 +45,18 @@ class ScraperAgent(BaseAgent):
             
             try:
                 articles = await self.scrape_category(category)
-                
+
                 # Apply Ralf's Loop for quality filtering
                 filtered = await self._apply_quality_filter(articles)
-                
+
+                # Ensure filtered is a list
+                if not isinstance(filtered, list):
+                    self.logger.warning(f"Filtered result is not a list: {type(filtered)}, converting...")
+                    if isinstance(filtered, dict) and 'articles' in filtered:
+                        filtered = filtered['articles']
+                    else:
+                        filtered = []
+
                 # Convert Article objects to dicts for storage
                 articles_dicts = []
                 for article in filtered:
@@ -66,16 +74,16 @@ class ScraperAgent(BaseAgent):
                             'relevance_score': article.relevance_score
                         }
                         articles_dicts.append(article_dict)
-                
+
                 # Save to storage
                 self.storage.save_raw(
                     articles_dicts,
                     category.replace(" ", "_")
                 )
-                
+
                 all_articles.extend(filtered)
                 self.logger.info(f"Scraped {len(filtered)} articles from {category}")
-                
+
             except Exception as e:
                 self.logger.error(f"Error scraping {category}: {e}")
         
@@ -232,12 +240,18 @@ class ScraperAgent(BaseAgent):
 
         # Check publish date is recent (within 14 days)
         if article.publish_date:
-            from datetime import datetime, timedelta
+            from datetime import datetime, timedelta, timezone
             if isinstance(article.publish_date, datetime):
-                age = datetime.now() - article.publish_date
-                if age > timedelta(days=14):
-                    self.logger.debug(f"Article too old: {article.title[:50]}")
-                    return False
+                # Make datetime.now() timezone-aware if article date is aware
+                now = datetime.now(timezone.utc) if article.publish_date.tzinfo else datetime.now()
+                try:
+                    age = now - article.publish_date
+                    if age > timedelta(days=14):
+                        self.logger.debug(f"Article too old: {article.title[:50]}")
+                        return False
+                except TypeError:
+                    # If still can't compare, skip date check
+                    pass
 
         return True
     
